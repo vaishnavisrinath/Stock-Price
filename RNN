@@ -1,0 +1,54 @@
+import numpy as np  #arrays
+import matplotlib.pyplot as plt  #visualize the results
+import pandas as pd   #import datasets
+dataset_train = pd.read_csv('price.csv')
+training_set = dataset_train.iloc[:, 1:2].values #create numpy array by adding '.values', we need to create array because only numpy arrays can be input of neural networks in keras
+from sklearn.preprocessing import MinMaxScaler      
+sc = MinMaxScaler(feature_range = (0, 1))   #range is 0,1 is cz all values lie between 0and1 in normalization formula
+training_set_scaled = sc.fit_transform(training_set) #fit gets min and max values and transfoem gets the corresponding values
+X_train = []     #60 stock prices previous financial day
+y_train = []       #stock price nextfinancial day
+for i in range(60, 1258):   #1258 since its for 5 financial years
+    X_train.append(training_set_scaled[i-60:i, 0])
+    y_train.append(training_set_scaled[i, 0])
+X_train, y_train = np.array(X_train), np.array(y_train)
+X_train = np.reshape(X_train, (X_train.shape[0], X_train.shape[1], 1))
+                              #no of lines in x_train(no of stock prices),no of columns in x_train(no of time steps), no of indicators
+from keras.models import Sequential
+from keras.layers import Dense
+from keras.layers import LSTM
+from keras.layers import Dropout     
+regressor = Sequential()   #called regressor as we r predicting a continuous value
+regressor.add(LSTM(units = 50, return_sequences = True, input_shape = (X_train.shape[1], 1))) #in third arguments we need to add only last two dimensions as first dimension is taken into account automatically
+regressor.add(Dropout(0.2)) #during forward and back propagation 20% of neurons are dropped
+regressor.add(LSTM(units = 50, return_sequences = True)) #only for first input layer we add input shape
+regressor.add(Dropout(0.2))
+regressor.add(LSTM(units = 50, return_sequences = True))
+regressor.add(Dropout(0.2))
+regressor.add(LSTM(units = 50))  #return_sequences is removed for last layer as we need not return
+regressor.add(Dropout(0.2))
+regressor.add(Dense(units = 1))
+regressor.compile(optimizer = 'adam', loss = 'mean_squared_error')
+regressor.fit(X_train, y_train, epochs = 200, batch_size = 34)
+dataset_test = pd.read_csv('Google_Stock_Price_Test.csv')
+real_stock_price = dataset_test.iloc[:, 1:2].values
+dataset_total = pd.concat((dataset_train['Open'], dataset_test['Open']), axis = 0) #axis=0 for horizontal concatenation and 1 for vertical
+inputs = dataset_total[len(dataset_total) - len(dataset_test) - 60:].values
+inputs = inputs.reshape(-1,1) #since we have not used iloc method from pandas its not shaped in numpy array.So solution is to reshape with (-1,1)
+inputs = sc.transform(inputs)
+
+X_test = []
+for i in range(60, 80):    #80=60+20 financial days of jan 2017
+    X_test.append(inputs[i-60:i, 0])
+X_test = np.array(X_test)
+
+X_test = np.reshape(X_test, (X_test.shape[0], X_test.shape[1], 1)) #to get 3d structure
+predicted_stock_price = regressor.predict(X_test) #since prediction was on scaled stock prices, to get original scale value we need to apply inverse_transform method
+predicted_stock_price = sc.inverse_transform(predicted_stock_price) 
+plt.plot(real_stock_price, color = 'red', label = 'Real Stock Price')
+plt.plot(predicted_stock_price, color = 'blue', label = 'Predicted  Stock Price')
+plt.title(' Stock Price Prediction')
+plt.xlabel('Time')
+plt.ylabel(' Stock Price')
+plt.legend() #area describing the elements of graph
+plt.show()
